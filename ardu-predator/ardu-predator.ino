@@ -1,24 +1,42 @@
-//Arduino Library must include the following library file collections.  
-//These repos are forked on my gitHub or you can find them at...
-//https://github.com/jrowberg/i2cdevlib
+/**
+ * ardu-predator.ino
+ *
+ * @author Mike Muscato
+ * @date   2017-01-11
+ *
+ * =============  Attribution ==========================
+ * Based on MPU6050_Latest_code.ino
+ * Originally provided by "HC" aka "zhomeslice" on forum.arduino.cc
+ * at https://forum.arduino.cc/index.php?PHPSESSID=h4c6487i42hbb7uh6rjk0eadp1&topic=446713.msg3073854#msg3073854
+ * 
+ * Original source committed in my repo for reference at: arduino/MPU6050/MPU6050_Latest_code/
+ * =====================================================
+ * 
+ */
+
+// Arduino Library must include the following library file collections.  
+// These repos are forked on my gitHub or you can find them at...
+// https://github.com/jrowberg/i2cdevlib
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "Wire.h"
 
-//Standard included arduino servo library
+// Standard included arduino servo library
 #include "Servo.h"
 
-//initialize gyro instance
-//TODO:  Change this to initialize two gyros with +VDC/Ground arguments
+// Initialize gyro instance
+// TODO:  Update this to initialize two gyros with +VDC/Ground arguments
 MPU6050 mpu;
 
-//initialize servo instances
+// Initialize servo instances
 Servo yawServo;
 Servo pitchServo;
 
-#define DEBUG  //Comment to turn off Serial printing
 
-//Debug serial printing macros
+// Comment to turn off Serial printing
+#define DEBUG  
+
+// DEBUG serial printing macros
 #ifdef DEBUG
 	//#define DPRINT(args...)  Serial.print(args)             //OR use the following syntax:
 	#define DPRINTSTIMER(t)    for (static unsigned long SpamTimer; (unsigned long)(millis() - SpamTimer) >= (t); SpamTimer = millis())
@@ -31,32 +49,42 @@ Servo pitchServo;
 #endif
 
 
-//TODO:  Find out if it's really necessary to turn on this LED...probably not.
+// TODO:  Find out if it's really necessary to turn on this LED...probably not.
 const int LED_PIN = 13;
 
-//Prevent the servos from turning beyond mechanical limits 
+// Prevent the servos from rotating beyond mechanical limits 
 const int maxPitch = 135;
 const int minPitch = 45;
-//Yaw direction is inverted via map() method in moveServos()
+// NOTE: Yaw direction is inverted via map() method in moveServos()
 const int maxYaw = 135;
 const int minYaw = 45;
 
 
-// supply gyro offsets here, scaled for min sensitivity use MPU6050_calibration.ino
+// supply gyro offsets here,
+// Use MPU6050_calibration.ino found at https://forum.arduino.cc/index.php?PHPSESSID=h4c6487i42hbb7uh6rjk0eadp1&topic=446713.msg3073854#msg3073854
+// Also copied in my repo:  arduino/MPU6050/
+// 
 // Gyro 0 (head) calibrated at:   {-3074,  -2036,  1236,    63,    -16,     78}
 //                     XA      YA      ZA      XG      YG      ZG
 int MPUOffsets0[6] = {-3074,  -2036,  1236,    63,    -16,     78};
 
+// var to store the servo position when testing
+int pos = 0;    
+
+// vars for angle values.
+float Yaw, Pitch, Roll;
+
+// Will be used for timing events.
 unsigned long currentMillis = 0;    // stores the value of millis() in each iteration of loop()
 unsigned long prevMillis = 0;    // stores the value of millis() in each iteration of loop()
 
-int pos = 0;    // variable to store the servo position when testing
+
 
 // ================================================================
 // ===                      i2c SETUP Items                     ===
 // ================================================================
 void i2cSetup() {
-  // join I2C bus (I2Cdev library doesn't do this automatically)
+  // Join I2C bus (I2Cdev library doesn't do this automatically)
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
   Wire.begin();
   TWBR = 24; // 400kHz I2C clock (200kHz if CPU is 8MHz)
@@ -65,6 +93,7 @@ void i2cSetup() {
 #endif
 }
 
+
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -72,6 +101,7 @@ volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin h
 void dmpDataReady() {
   mpuInterrupt = true;
 }
+
 
 // ================================================================
 // ===                      MPU DMP SETUP                       ===
@@ -174,20 +204,20 @@ void GetDMP() { // Best version I have made so far
 // ================================================================
 // ===                        MPU Math                          ===
 // ================================================================
-float Yaw, Pitch, Roll;
 void MPUMath() {
   mpu.dmpGetQuaternion(&q, fifoBuffer);
   mpu.dmpGetGravity(&gravity, &q);
   mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 
-  //TODO: Move the +90 gyro/servo leveling math to another method, 
-  //it doesn't belong here and will cause readability problems later.
+  // Add 90-degrees to center servos when sensor is level (e.g. 0 degrees)
+  // TODO: Move the +90 gyro/servo leveling magic number to another method, 
+  // ...it doesn't belong here and will cause readability problems later.
   Yaw = (ypr[0] * 180.0 / M_PI) + 90;
   Pitch = (ypr[1] *  180.0 / M_PI) + 90;
   Roll = (ypr[2] *  180.0 / M_PI) + 90;
 
   /*
-  //Serial.log the current actual values of the gyro position.
+  // Serial.print the current actual values of the gyro position.
   DPRINTSTIMER(100) {
     DPRINTSFN(15, "\tYaw:", Yaw, 6, 1);
     DPRINTSFN(15, "\tPitch:", Pitch, 6, 1);
@@ -196,15 +226,17 @@ void MPUMath() {
   }
   */
 
+  // Timer - don't try and move the servos too frequently, they need time to get to the current position.
+  // TODO: Remove delay magic number and move to global var for tuning mechanical
   if (currentMillis >= prevMillis + 15) {
     moveServos(round(Yaw), round(Pitch));
   }
 
-
 }
 
+
 /**
- * Move the servos to the gyro postion
+ * Move the servos to the current gyro postion
  * =============================================================
  *
  * @author Mike Muscato
@@ -216,15 +248,14 @@ void MPUMath() {
  */
 void moveServos(int servoYaw, int servoPitch) {
 
-  //TODO: Determine if yaw/pitch is beyond normal servo angles
-  //i.e. > 179 or < 0
-  //If so, assume actual gyro position and provide max servo value.
-  //Create trimAngles() method.
+  // TODO: Determine if yaw/pitch is beyond normal servo angles i.e. > 179 or < 0
+  // May not be necessary after adding 2nd gyro and using relative angles.
+  // If so, assume actual gyro position and provide max servo value.
   
-  //Invert Yaw
+  // Invert Yaw values for my servo orientation.
   int invertedYaw = map(servoYaw, 0, 179, 179, 0);
 
-  //Prevent the servos from moving farther than my head can rotate.
+  // Prevent the servos from panning farther than my head can rotate.
   if (invertedYaw > maxYaw) {
     invertedYaw = maxYaw;
   }
@@ -232,7 +263,7 @@ void moveServos(int servoYaw, int servoPitch) {
     invertedYaw = minYaw; 
   }
 
-  //Prevent the servos from tilting farther than my head can nod.
+  // Prevent the servos from tilting farther than my head can nod.
   if (servoPitch > maxPitch) {
     servoPitch = maxPitch;
   }
@@ -240,6 +271,7 @@ void moveServos(int servoYaw, int servoPitch) {
     servoPitch = minPitch;  
   }
 
+  // Print out the current yaw and pitch angle values being sent to the servos.
   DPRINTSTIMER(100) {
     DPRINTSFN(15, "\tServo - Yaw:", servoYaw, 6, 1);
     DPRINTSFN(15, "\tServo - invertYaw:", invertedYaw, 6, 1);
@@ -247,62 +279,73 @@ void moveServos(int servoYaw, int servoPitch) {
     DPRINTLN();
   }
 
-
+  // Move the servos to the current yaw/pitch values
   yawServo.write(invertedYaw);
   pitchServo.write(servoPitch);
 
+  // Reset the timer for comparison on the next loop
   prevMillis = currentMillis;
 
 }
 
 
-// ================================================================
-// ===                         Setup                            ===
-// ================================================================
+/**
+ * =============================================================
+ * ===                 Arduino Setup                         ===
+ * =============================================================
+ *
+ * @author Mike Muscato
+ * @date   2017-01-30
+ *
+ * @return {void}
+ */
 void setup() {
-  Serial.begin(115200); //115200
-  while (!Serial);
+  Serial.begin(115200);
+  while (!Serial);  // Wait for the connection to be established?
+
+  // Run MPU initializations
   Serial.println("i2cSetup");
   i2cSetup();
   Serial.println("MPU6050Connect");
   MPU6050Connect();
   Serial.println("Setup complete");
+
   pinMode(LED_PIN, OUTPUT);
 
+  // Assign PWM Pins to servo signal wires
   yawServo.attach(9);
   pitchServo.attach(10);
 
+  // Center the servos' start position
   yawServo.write(90);
   pitchServo.write(90);
 }
 
 
-// ================================================================
-// ===                          Loop                            ===
-// ================================================================
+/**
+ * =============================================================
+ * ===                  Arduino Loop                         ===
+ * =============================================================
+ *
+ * @author Mike Muscato
+ * @date   2017-01-30
+ *
+ * @return {void}
+ */
 void loop() {
-  currentMillis = millis();   // capture the latest value of millis()
-  if (mpuInterrupt ) { // wait for MPU interrupt or extra packet(s) available
+  currentMillis = millis();   // Capture the latest value of millis()
+  if (mpuInterrupt ) { // Wait for MPU interrupt or extra packet(s) available
     GetDMP();
   }
 
-  //for calibrating the start position in the hardware.  
-  //TODO: Comment when completed or it will conflict with the 
-  //motion of the robot.
+  // Uncomment for setting and adjusting the hardware start position. 
+  // (e.g. Setting rotation and leveling the pan/tilt servo arms at initial 90-degree position)
+  // IMPORTANT: Comment out the moveServos() method call in MPUMath() when using this. 
+  // TODO: Remove in final program once hardware and software calibration is completed.
+  // 
   // yawServo.write(90);
   // pitchServo.write(90);
 
-  //for testing hardware  
-  // //TODO: Comment when completed
-  // for (pos = 0; pos <= 180; pos += 1) { // goes from 0 degrees to 180 degrees
-  //   // in steps of 1 degree
-  //   yawServo.write(pos);              // tell servo to go to position in variable 'pos'
-  //   delay(20);                       // waits 15ms for the servo to reach the position
-  // }
-  // for (pos = 180; pos >= 0; pos -= 1) { // goes from 180 degrees to 0 degrees
-  //   yawServo.write(pos);              // tell servo to go to position in variable 'pos'
-  //   delay(20);                       // waits 15ms for the servo to reach the position
-  // }
 }
 
 
