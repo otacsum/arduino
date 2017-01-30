@@ -1,6 +1,11 @@
+//Arduino Library must include the following library file collections.  
+//These repos are forked on my gitHub or you can find them at...
+//https://github.com/jrowberg/i2cdevlib
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "Wire.h"
+
+//Standard included arduino servo library
 #include "Servo.h"
 
 //initialize gyro instance
