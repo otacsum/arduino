@@ -39,8 +39,7 @@
   #define DPRINTLN(...)      //blank line
 #endif
 
-// Initialize gyro instance
-// TODO:  Update this to initialize two gyros with +VDC/Ground arguments
+// Initialize gyro instances for both MPUs
 MPU6050 mpus[2] = {MPU6050(0x68), MPU6050(0x69)};
 
 const int LED_PIN = 13;
@@ -85,7 +84,8 @@ void i2cSetup() {
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
-volatile bool mpuInterrupt[2] = {false, false};     // indicates whether MPU interrupt pin has gone high
+// indicates whether MPU interrupt pin has gone high
+volatile bool mpuInterrupt[2] = {false, false};     
 
 //Intentional duplication. Interrupt routine cannot pass args. 
 void dmpDataReady0() {
@@ -101,12 +101,7 @@ void dmpDataReady1() {
 // ================================================================
 // ===                      MPU DMP SETUP                       ===
 // ================================================================
-// MPU control/status vars
-
-//This isn't used anywhere, I think we can get rid of it.
-//uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
-
-uint8_t devStatus;      // return status after each initialization operation (0 = success, !0 = error)
+uint8_t devStatus; // return status after each initialization operation (0 = success, !0 = error)
 
 //Containers for each MPU's communication
 int FifoAlive[2] = {0, 0}; // tests if the interrupt is triggering
@@ -119,15 +114,6 @@ uint8_t fifoBuffer[2][64]; // FIFO storage buffer
 Quaternion q;           // [w, x, y, z]         quaternion container
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
-
-
-//Not used anywhere in the code, can probably remove this
-//int IsAlive = -20;     // counts interrupt start at -20 to get 20+ good values before assuming connected
-//VectorInt16 aa;         // [x, y, z]            accel sensor measurements
-//VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
-//VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
-//float euler[3];         // [psi, theta, phi]    Euler angle container
-
 
 
 
@@ -195,19 +181,10 @@ void MPU6050Connect() {
     else {
       attachInterrupt(i, dmpDataReady1, RISING);
     }
-
-    //This isn't used anywhere, I think we can get rid of it.
-    //Also does not appear to be used in the MPU6050 class anywhere?
-    //mpuIntStatus = mpus[i].getIntStatus();
     
     packetSize[i] = mpus[i].dmpGetFIFOPacketSize();  // get expected DMP packet size for later comparison
     delay(1000); // Let it Stabalize
-    mpus[i].resetFIFO(); // Clear fifo buffer
-    
-    //This isn't used anywhere, I think we can get rid of it.
-    //Also does not appear to be used in the MPU6050 class anywhere?
-    //mpus[i].getIntStatus();
-    
+    mpus[i].resetFIFO(); // Clear fifo buffer    
     mpuInterrupt[i] = false; // wait for next interrupt
     
   }
@@ -243,7 +220,6 @@ void GetDMP() {
     }
   } 
   
-  //LastGoodPacketTime = millis();  TODO:  This isn't doing anything, remove it?  Not sure why it was here.
   MPUMath(); // Successful!  Do the math and show angles from both MPUs
   digitalWrite(LED_PIN, !digitalRead(LED_PIN)); // Blink the LED on each cycle
   
@@ -261,12 +237,12 @@ void GetDMP() {
 void MPUMath() {
   for (int i = 0; i < 2; i++) {
 
-    //Get the raw data from the sensor
+    // Get the raw data from the sensor
     mpus[i].dmpGetQuaternion(&q, fifoBuffer[i]);
     mpus[i].dmpGetGravity(&gravity, &q);
     mpus[i].dmpGetYawPitchRoll(ypr, &q, &gravity);
   
-    //Calculate readable angles
+    // Calculate readable angles
     Yaw = (ypr[0] * 180.0 / M_PI);
     Pitch = (ypr[1] *  180.0 / M_PI);
     Roll = (ypr[2] *  180.0 / M_PI);
