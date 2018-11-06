@@ -2,7 +2,7 @@
  * ardu-predator.ino
  *
  * @author Mike Muscato
- * @date   2017-07-04
+ * @date   2017-11-05
  * 
  * Refactored to handle two GY-521 MPU6050 Breakout Boards.
  * One fixed to the body, the other dynamic on the head.
@@ -31,7 +31,7 @@
 #include "Servo.h"
 
 // Comment to turn off Serial printing
-#define DEBUG  
+//#define DEBUG  
 
 // DEBUG serial printing macros
 #ifdef DEBUG
@@ -62,6 +62,13 @@ const int minPitch = 45;
 const int maxYaw = 135;
 const int minYaw = 45;
 
+//used to center servos when gyros are level.  
+//e.g. 0 degrees becomes 90 degrees, the middle of the servo's swing.
+const int servoAngleOffset = 90;
+
+//millis between servo position write events.
+const int servoDelay = 1000;
+
 // You must supply your gyro offsets here,
 // Use MPU6050_calibration.ino found at:
 //     https://forum.arduino.cc/index.php?PHPSESSID=h4c6487i42hbb7uh6rjk0eadp1&topic=446713.msg3073854#msg3073854
@@ -79,9 +86,6 @@ int mpuOffsets[2][6] =  {
 
 // var to store the servo position when testing
 int pos = 0;    
-
-// vars for angle values.
-float Yaw, Pitch, Roll;
 
 // Will be used for timing events.
 unsigned long currentMillis = 0;    // stores the value of millis() in each iteration of loop()
@@ -223,27 +227,27 @@ void MPU6050Connect() {
  *
  */
 void GetDMP() { 
-
-  for (int i = 0; i < 2; i++) { 
-    mpuInterrupt[i] = false;
-    FifoAlive[i] = 1;
-    fifoCount[i] = mpus[i].getFIFOCount();
-    
-    if ((!fifoCount[i]) || (fifoCount[i] % packetSize[i])) { // we have failed Reset and wait till next time!
-      digitalWrite(LED_PIN, LOW); // lets turn off the blinking LED so we can see we are failing.
-        mpus[i].resetFIFO();// clear the buffer and start over
-    } 
-    else {
-      while (fifoCount[i]  >= packetSize[i]) { // Get the packets until we have the latest!
-          mpus[i].getFIFOBytes(fifoBuffer[i], packetSize[i]); // lets do the magic and get the data
-          fifoCount[i] -= packetSize[i];
+  if (currentMillis >= prevMillis + servoDelay) {
+    for (int i = 0; i < 2; i++) { 
+      mpuInterrupt[i] = false;
+      FifoAlive[i] = 1;
+      fifoCount[i] = mpus[i].getFIFOCount();
+      
+      if ((!fifoCount[i]) || (fifoCount[i] % packetSize[i])) { // we have failed Reset and wait till next time!
+        digitalWrite(LED_PIN, LOW); // lets turn off the blinking LED so we can see we are failing.
+          mpus[i].resetFIFO();// clear the buffer and start over
+      } 
+      else {
+        while (fifoCount[i]  >= packetSize[i]) { // Get the packets until we have the latest!
+            mpus[i].getFIFOBytes(fifoBuffer[i], packetSize[i]); // lets do the magic and get the data
+            fifoCount[i] -= packetSize[i];
+        }
       }
-    }
-  } 
-  
-  MPUMath(); // Successful!  Do the math and show angles from both MPUs
-  digitalWrite(LED_PIN, !digitalRead(LED_PIN)); // Blink the LED on each cycle
-  
+    } 
+    
+    MPUMath(); // Successful!  Do the math and show angles from both MPUs
+    digitalWrite(LED_PIN, !digitalRead(LED_PIN)); // Blink the LED on each cycle
+  }
 }
 
 
@@ -257,6 +261,14 @@ void GetDMP() {
  *
  */
 void MPUMath() {
+  // vars for angle values.
+  float Yaw[2], Pitch[2]; 
+  int yawDiff, pitchDiff;
+
+  //Add Roll if you need it, we don't for the Predator project; 
+  //float Roll[2];
+  //int rollDiff;
+
   for (int i = 0; i < 2; i++) {
     // Get the raw data from the sensor
     mpus[i].dmpGetQuaternion(&q, fifoBuffer[i]);
@@ -264,33 +276,36 @@ void MPUMath() {
     mpus[i].dmpGetYawPitchRoll(ypr, &q, &gravity);
   
     // Calculate readable angles
-    // Adds 90-degrees to center servos when sensor is level (e.g. 0 degrees)
-    // TODO: Move the +90 gyro/servo leveling magic number to another method, 
-    // ...it doesn't belong here and will cause readability problems later.
-    Yaw = (ypr[0] * 180.0 / M_PI) + 90;
-    Pitch = (ypr[1] *  180.0 / M_PI) + 90;
-    Roll = (ypr[2] *  180.0 / M_PI) + 90;
+    Yaw[i] = (ypr[0] * 180.0 / M_PI);
+    Pitch[i] = (ypr[1] *  180.0 / M_PI);
 
-    //TODO: Add YPR values to temp var for each MPU, so that we can diff them.
+    //Calculate Roll if you need it.  We don't for the Predator project.
+    //Roll[i] = (ypr[2] *  180.0 / M_PI) + servoAngleOffset;
 
     // Serial.print the current angle values of the gyro position.
     // DPRINTSTIMER(x) argument is the number of milliseconds between print events
-    // Smaller numbers give more reliable switching between MPU 0 an 1 but seem to cause crashing (Buffer overrun?)
-    //    DPRINTSTIMER(1) {
-    //      DPRINTSFN(15, "\tValues for MPU :", i, 6, 1);
-    //      DPRINTSFN(15, "\tYaw:", Yaw, 6, 1);
-    //      DPRINTSFN(15, "\tPitch:", Pitch, 6, 1);
-    //      DPRINTSFN(15, "\tRoll:", Roll, 6, 1);
-    //      DPRINTLN();
-    //    }
+    // Smaller numbers seem to give more reliable switching between MPU 0 an 1 but seem to cause crashing (Buffer overrun?)
+      // DPRINTSTIMER(15) {
+      //   DPRINTSFN(15, "\tValues for MPU :", i, 6, 1);
+      //   DPRINTSFN(15, "\tYaw:", Yaw[i], 6, 1);
+      //   DPRINTSFN(15, "\tPitch:", Pitch[i], 6, 1);
+          //Write out Roll if you're using it.  We don't for the predator Project
+          //   DPRINTSFN(15, "\tRoll:", Roll[i], 6, 1);
+      //   DPRINTLN();
+      // }
     
   }
 
-    // Timer - don't try and move the servos too frequently, they need time to get to the current position.
-    // TODO: Remove delay magic number and move to global var for tuning mechanical response
-    if (currentMillis >= prevMillis + 15) {
-      moveServos(round(Yaw), round(Pitch)); // TODO:  Change these values to the new diff'd values.
-    }
+  // Calculates the relative difference in angles between the two sensors.
+  // Adds 90-degrees, value defined above, to center servos when diff between sensors is level.
+  yawDiff = round((Yaw[1] - Yaw[0]) + servoAngleOffset);
+  pitchDiff = round((Pitch[1] - Pitch[0]) + servoAngleOffset);
+
+  // Timer - don't try and move the servos too frequently, they need time to get to the current position.
+  //if (currentMillis >= prevMillis + servoDelay) {
+    moveServos(yawDiff, pitchDiff); // TODO:  Change these values to the new diff'd values.
+  //}
+
 }
 
 /**
@@ -312,10 +327,11 @@ void moveServos(int servoYaw, int servoPitch) {
   // If so, assume actual gyro position and provide max servo value.
   
   // Invert Yaw values for my servo orientation.
+  // Comment out this line if your yaw is moving opposite the gyro.
   int invertedYaw = map(servoYaw, 0, 179, 179, 0);
 
   // Prevent the servos from panning farther than my head can rotate.
-  // May not be necessary after adding 2nd gyro and using relative angles.
+  // TODO: May not be necessary after adding 2nd gyro and using relative angles.
   if (invertedYaw > maxYaw) {
     invertedYaw = maxYaw;
   }
@@ -323,8 +339,8 @@ void moveServos(int servoYaw, int servoPitch) {
     invertedYaw = minYaw; 
   }
 
-  // Prevent the servos from tilting farther than my head can nod.
-  // May not be necessary after adding 2nd gyro and using relative angles.
+  // Prevent the servos from tilting farther than my head can pitch.
+  // TODO: May not be necessary after adding 2nd gyro and using relative angles.
   if (servoPitch > maxPitch) {
     servoPitch = maxPitch;
   }
@@ -333,12 +349,9 @@ void moveServos(int servoYaw, int servoPitch) {
   }
 
   // Print out the current yaw and pitch angle values being sent to the servos.
-  //  DPRINTSTIMER(100) {
-  //    DPRINTSFN(15, "\tServo - Yaw:", servoYaw, 6, 1);
-  //    DPRINTSFN(15, "\tServo - invertYaw:", invertedYaw, 6, 1);
-  //    DPRINTSFN(15, "\tPitch:", servoPitch, 6, 1);
-  //    DPRINTLN();
-  //  }
+  Serial.print("\tServo - Yaw:"); Serial.print(servoYaw);
+  Serial.print("\tServo - invertYaw:"); Serial.print(invertedYaw);
+  Serial.print("\tPitch:"); Serial.println(servoPitch);
 
   // Move the servos to the current yaw/pitch values
   yawServo.write(invertedYaw);
