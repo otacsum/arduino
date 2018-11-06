@@ -46,21 +46,11 @@ THE SOFTWARE.
 // specific I2C addresses may be passed as a parameter here
 // AD0 low = 0x68 (default for InvenSense evaluation board)
 // AD0 high = 0x69
-MPU6050 mpu0(0x68);
-MPU6050 mpu1(0x69);
+MPU6050 accelgyro;
+//MPU6050 accelgyro(0x69); // <-- use for AD0 high
 
-int16_t ax0, ay0, az0;
-int16_t gx0, gy0, gz0;
-
-int16_t ax1, ay1, az1;
-int16_t gx1, gy1, gz1;
-
-// supply gyro offsets here, scaled for min sensitivity use MPU6050_calibration.ino
-// Gyro 0 (head) calibrated at:   {-3074,  -2036,  1236,    63,    -16,     78}
-// Gyro 1 (fixed) calibrated at:  {-1143,  -1197,   989,   147,    -78,    -10}  //May need yaw calibration.
-//                     XA      YA      ZA      XG      YG      ZG
-int MPUOffsets0[6] = {-3074,  -2036,  1236,    63,    -16,     78};
-int MPUOffsets1[6] = {-1143,  -1197,   989,   147,    -78,    -10};
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
 
 
 
@@ -94,41 +84,42 @@ void setup() {
 
     // initialize device
     Serial.println("Initializing I2C devices...");
-    mpu0.initialize();
-    mpu1.initialize();
+    accelgyro.initialize();
 
     // verify connection
     Serial.println("Testing device connections...");
-    Serial.println(mpu0.testConnection() ? "MPU6050 connection 0 successful" : "MPU6050 connection 0 failed");
-    Serial.println(mpu1.testConnection() ? "MPU6050 connection 1 successful" : "MPU6050 connection 1 failed");
+    Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
     // use the code below to change accel/gyro offset values
-    
+    /*
     Serial.println("Updating internal sensor offsets...");
+    // -76	-2359	1688	0	0	0
+    Serial.print(accelgyro.getXAccelOffset()); Serial.print("\t"); // -76
+    Serial.print(accelgyro.getYAccelOffset()); Serial.print("\t"); // -2359
+    Serial.print(accelgyro.getZAccelOffset()); Serial.print("\t"); // 1688
+    Serial.print(accelgyro.getXGyroOffset()); Serial.print("\t"); // 0
+    Serial.print(accelgyro.getYGyroOffset()); Serial.print("\t"); // 0
+    Serial.print(accelgyro.getZGyroOffset()); Serial.print("\t"); // 0
+    Serial.print("\n");
+    accelgyro.setXGyroOffset(220);
+    accelgyro.setYGyroOffset(76);
+    accelgyro.setZGyroOffset(-85);
+    Serial.print(accelgyro.getXAccelOffset()); Serial.print("\t"); // -76
+    Serial.print(accelgyro.getYAccelOffset()); Serial.print("\t"); // -2359
+    Serial.print(accelgyro.getZAccelOffset()); Serial.print("\t"); // 1688
+    Serial.print(accelgyro.getXGyroOffset()); Serial.print("\t"); // 0
+    Serial.print(accelgyro.getYGyroOffset()); Serial.print("\t"); // 0
+    Serial.print(accelgyro.getZGyroOffset()); Serial.print("\t"); // 0
+    Serial.print("\n");
+    */
 
-      mpu0.setXAccelOffset(MPUOffsets0[0]);
-      mpu0.setYAccelOffset(MPUOffsets0[1]);
-      mpu0.setZAccelOffset(MPUOffsets0[2]);
-      mpu0.setXGyroOffset(MPUOffsets0[3]);
-      mpu0.setYGyroOffset(MPUOffsets0[4]);
-      mpu0.setZGyroOffset(MPUOffsets0[5]);
-
-      mpu1.setXAccelOffset(MPUOffsets1[0]);
-      mpu1.setYAccelOffset(MPUOffsets1[1]);
-      mpu1.setZAccelOffset(MPUOffsets1[2]);
-      mpu1.setXGyroOffset(MPUOffsets1[3]);
-      mpu1.setYGyroOffset(MPUOffsets1[4]);
-      mpu1.setZGyroOffset(MPUOffsets1[5]);
-    
-
-    // configure Arduino LED for
+    // configure Arduino LED pin for output
     pinMode(LED_PIN, OUTPUT);
 }
 
 void loop() {
     // read raw accel/gyro measurements from device
-    mpu0.getMotion6(&ax0, &ay0, &az0, &gx0, &gy0, &gz0);
-    mpu1.getMotion6(&ax1, &ay1, &az1, &gx1, &gy1, &gz1);
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
     // these methods (and a few others) are also available
     //accelgyro.getAcceleration(&ax, &ay, &az);
@@ -136,21 +127,13 @@ void loop() {
 
     #ifdef OUTPUT_READABLE_ACCELGYRO
         // display tab-separated accel/gyro x/y/z values
-        Serial.print("a/g 0:\t");
-        Serial.print(ax0); Serial.print("\t");
-        Serial.print(ay0); Serial.print("\t");
-        Serial.print(az0); Serial.print("\t");
-        Serial.print(gx0); Serial.print("\t");
-        Serial.print(gy0); Serial.print("\t");
-        Serial.println(gz0);
-
-        Serial.print("a/g 1:\t");
-        Serial.print(ax1); Serial.print("\t");
-        Serial.print(ay1); Serial.print("\t");
-        Serial.print(az1); Serial.print("\t");
-        Serial.print(gx1); Serial.print("\t");
-        Serial.print(gy1); Serial.print("\t");
-        Serial.println(gz1);
+        Serial.print("a/g:\t");
+        Serial.print(ax); Serial.print("\t");
+        Serial.print(ay); Serial.print("\t");
+        Serial.print(az); Serial.print("\t");
+        Serial.print(gx); Serial.print("\t");
+        Serial.print(gy); Serial.print("\t");
+        Serial.println(gz);
     #endif
 
     #ifdef OUTPUT_BINARY_ACCELGYRO
